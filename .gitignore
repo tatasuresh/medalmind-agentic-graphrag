@@ -6,3 +6,4 @@ results/chunks.jsonl
 results/*.log
 results/*.err
 ~$*
+_arch.html

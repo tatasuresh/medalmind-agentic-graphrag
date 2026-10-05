@@ -42,7 +42,9 @@ Accuracy by question type (correct / total):
 
 ## Architecture
 
-See [docs/architecture.md](docs/architecture.md) for the diagram.
+![MedalMindAgent architecture](docs/architecture.png)
+
+Vector version: [docs/architecture.svg](docs/architecture.svg). Mermaid source: [docs/architecture.md](docs/architecture.md).
 
 ```
 corpus.jsonl ─ parse infoboxes (regex, no LLM) ─> TigerGraph  Doc/Chunk/Event/Games/Sport/Venue/Athlete/Nation
