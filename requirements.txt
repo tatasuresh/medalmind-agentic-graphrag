@@ -1,0 +1,6 @@
+﻿openai>=1.50
+pyTigerGraph>=1.8
+numpy
+python-dotenv
+tqdm
+tiktoken

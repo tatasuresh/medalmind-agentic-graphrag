@@ -1,0 +1,60 @@
+# Architecture
+
+```mermaid
+flowchart TB
+  subgraph DATA["Ingest (one-off, deterministic: no LLM extraction)"]
+    C[("corpus.jsonl<br/>2,951 Wikipedia docs")] --> P["parse_infobox.py<br/>regex infobox parser + chunker"]
+    P -->|"Doc, Chunk, Event, Games, Sport,<br/>Venue, Athlete, Nation + edges"| TG[("TigerGraph Savanna<br/>AgenticOlympics graph")]
+    P -->|"16,770 chunks"| EMB["text-embedding-3-small<br/>chunk_emb.npy (cosine)"]
+  end
+
+  Q["Question"] --> R1 & R2 & ORCH
+
+  subgraph PIPE1["Pipeline 1: RAG"]
+    R1["embed question"] --> V1["top-6 chunks"] --> L1["1 LLM call"]
+  end
+
+  subgraph PIPE2["Pipeline 2: GraphRAG (fixed recipe)"]
+    R2["vector seeds (top-4)"] --> EL2["entity link<br/>sport / games"] --> GX["graph expansion<br/>event table + medalists"] --> L2["1 LLM call"]
+  end
+
+  subgraph PIPE3["Pipeline 3: Agentic GraphRAG"]
+    ORCH{{"Orchestrator LLM<br/>plan, act, evaluate, replan, stop<br/>(budget 10 steps)"}}
+    ORCH -->|"link_entity"| A1["EntityLinker"]
+    ORCH -->|"find_events (filter / count / rank)"| A2["Aggregator"]
+    ORCH -->|"get_event / previous_games"| A3["GraphTraverser"]
+    ORCH -->|"vector_search / get_chunks"| A4["Retriever"]
+    ORCH -->|"check_evidence"| A5["EvidenceEvaluator"]
+    A1 & A2 & A3 & A4 & A5 -->|"evidence"| ORCH
+    ORCH -->|"finish(answer, doc_ids)"| ANS3["answer + trace"]
+  end
+
+  A2 & A3 & A1 & GX --- TG
+  A4 & V1 & R2 --- EMB
+
+  L1 & L2 & ANS3 --> EVAL["eval/run.py<br/>tokens, latency, trace per question"]
+  EVAL --> J["eval/judge.py<br/>LLM-as-judge PASS/FAIL"] --> DASH["dashboard/index.html<br/>accuracy, tokens, traces"]
+```
+
+## Components
+
+| Component | File | Role |
+|---|---|---|
+| Graph client | `tg.py` | GSQL + RESTPP (bearer token) access to TigerGraph Savanna |
+| LLM wrapper | `llm.py` | Every call metered: input/output/embedding tokens, latency |
+| Toolbox | `tools/graph_tools.py` | Tools, grouped by owning specialised agent |
+| Pipelines | `pipelines/{rag,graphrag,agentic}.py` | The three systems under comparison |
+| Harness | `eval/run.py`, `eval/judge.py` | Resumable runs, LLM-as-judge scoring |
+| Dashboard | `dashboard/build.py` | Self-contained HTML with per-question traces |
+
+## Graph schema
+
+`Doc -HAS_CHUNK-> Chunk`, `Doc -IS_EVENT-> Event`, `Event -IN_GAMES-> Games`, `Event -IN_SPORT-> Sport`,
+`Event -HELD_AT-> Venue`, `Event -MEDAL{medal,noc}-> Athlete`, `Event -MEDAL_NATION-> Nation`,
+`Games -PREV_GAMES-> Games`, `Event -PREV_EDITION-> Event`.
+
+## Why the agent can win where RAG cannot
+
+Aggregation ("how many events had more than N competitors"), superlatives and temporal hops need *every* matching
+event, not the top-k most similar chunks. The `Aggregator` runs a typed filter inside TigerGraph; the `GraphTraverser`
+follows `PREV_GAMES` / `PREV_EDITION`. Simple lookups stay cheap because the orchestrator stops after one or two calls.

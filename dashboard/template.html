@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MedalMindAgent Benchmark</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e4e4df;--rag:#8a8a85;--graph:#2b6cb0;--agent:#d9480f;--ok:#2f855a;--bad:#c53030}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121212;--card:#1c1c1b;--ink:#ececea;--mute:#9a9a95;--line:#2c2c2a;--rag:#9a9a95;--graph:#63a4ff;--agent:#ff8a4c;--ok:#48bb78;--bad:#fc8181}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,Segoe UI,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 10px}p.sub{color:var(--mute);margin:0 0 20px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h3{margin:0 0 8px;font-size:14px}.big{font-size:26px;font-weight:650}.mute{color:var(--mute);font-size:12px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+canvas{max-height:300px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--mute);font-weight:600}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;border:1px solid var(--line);font-size:12px;color:var(--mute)}
+select,input{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+details{margin:2px 0}summary{cursor:pointer;color:var(--mute)}
+.trace{font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:6px;white-space:pre-wrap;word-break:break-word}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+<h1>MedalMindAgent: when does an agent pay off?</h1>
+<p class="sub">RAG vs GraphRAG vs Agentic GraphRAG on the 100 public questions (TigerGraph knowledge graph, LLM-as-judge accuracy, measured tokens).</p>
+<div class="grid" id="cards"></div>
+<h2>Accuracy by question type</h2>
+<div class="card"><canvas id="cType"></canvas></div>
+<div class="grid" style="margin-top:12px">
+  <div class="card"><h3>Average tokens per answer</h3><canvas id="cTok"></canvas></div>
+  <div class="card"><h3>Accuracy vs tokens (is the agent worth it?)</h3><canvas id="cScatter"></canvas></div>
+</div>
+<h2>Summary table</h2>
+<div class="scroll"><table id="sum"></table></div>
+<h2>Per-question results and agent traces</h2>
+<div class="controls">
+  <select id="fType"><option value="">All types</option></select>
+  <select id="fOutcome"><option value="">Any outcome</option><option value="agentWins">Agent right, RAG wrong</option><option value="agentLoses">Agent wrong, RAG right</option><option value="allWrong">All wrong</option></select>
+  <input id="fText" placeholder="Search question or answer">
+</div>
+<div class="scroll"><table id="qs"></table></div>
+</main>
+<script>
+const D = /*DATA*/null;
+const COLOR = {rag:"#8a8a85",graphrag:"#2b6cb0",agentic:"#d9480f",adaptive:"#2f855a"};
+const P = ["rag","graphrag","agentic","adaptive"].filter(p=>D.summary[p]);
+const L = D.labels, pct = v => v==null?"-":(v*100).toFixed(1)+"%", num = v => v==null?"-":Math.round(v).toLocaleString();
+const esc = s => String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function routedPct(){let a=0,t=0;Object.values(D.routes||{}).forEach(o=>Object.entries(o).forEach(([k,v])=>{t+=v;if(k==="complex")a+=v}));return t?(a/t*100).toFixed(0)+"%":"-"}
+document.getElementById("cards").innerHTML = P.map(p=>{const s=D.summary[p];return `<div class="card"><h3 style="color:${COLOR[p]}">${L[p]}</h3>
+ <div class="big">${pct(s.accuracy)}</div><div class="mute">accuracy (n=${s.n})</div>
+ <div class="row"><span>Completeness</span><b>${pct(s.completeness)}</b></div>
+ <div class="row"><span>Avg total tokens</span><b>${num(s.avg_total_tokens)}</b></div>
+ <div class="row"><span>Avg latency</span><b>${s.avg_seconds??"-"} s</b></div>
+ ${s.avg_steps?`<div class="row"><span>Avg agent steps</span><b>${s.avg_steps}</b></div>`:""}
+ ${p==="adaptive"?`<div class="row"><span>Routed to agent</span><b>${routedPct()}</b></div>`:""}</div>`}).join("");
+const types = [...new Set(P.flatMap(p=>Object.keys(D.by_type[p])))].sort();
+new Chart(cType,{type:"bar",data:{labels:types,datasets:P.map(p=>({label:L[p],backgroundColor:COLOR[p],data:types.map(t=>(D.by_type[p][t]?.accuracy??0)*100)}))},options:{scales:{y:{max:100,title:{display:true,text:"accuracy %"}}}}});
+new Chart(cTok,{type:"bar",data:{labels:P.map(p=>L[p]),datasets:[{label:"input",backgroundColor:"#2b6cb0",data:P.map(p=>D.summary[p].avg_input_tokens)},{label:"output",backgroundColor:"#d9480f",data:P.map(p=>D.summary[p].avg_output_tokens)}]},options:{scales:{x:{stacked:true},y:{stacked:true}}}});
+new Chart(cScatter,{type:"scatter",data:{datasets:P.map(p=>({label:L[p],backgroundColor:COLOR[p],pointRadius:9,data:[{x:D.summary[p].avg_total_tokens,y:(D.summary[p].accuracy||0)*100}]}))},options:{scales:{x:{title:{display:true,text:"avg tokens / answer"}},y:{title:{display:true,text:"accuracy %"},max:100}}}});
+const rows=[["Accuracy",s=>pct(s.accuracy)],["Completeness",s=>pct(s.completeness)],["Grounding (gold docs cited)",s=>pct(s.grounding)],["Avg context tokens",s=>num(s.avg_context_tokens)],["Avg LLM input tokens",s=>num(s.avg_input_tokens)],["Avg LLM output tokens",s=>num(s.avg_output_tokens)],["Avg total tokens",s=>num(s.avg_total_tokens)],["Avg LLM calls",s=>s.avg_llm_calls??"-"],["Avg latency (s)",s=>s.avg_seconds??"-"],["Avg chunks retrieved",s=>s.avg_chunks??"-"],["Errors",s=>s.errors]];
+sum.innerHTML=`<tr><th>Metric</th>${P.map(p=>`<th>${L[p]}</th>`).join("")}</tr>`+rows.map(([n,f])=>`<tr><td>${n}</td>${P.map(p=>`<td class="num">${f(D.summary[p])}</td>`).join("")}</tr>`).join("");
+types.forEach(t=>fType.insertAdjacentHTML("beforeend",`<option>${t}</option>`));
+function render(){
+  const ft=fType.value, fo=fOutcome.value, tx=fText.value.toLowerCase();
+  const list=D.questions.filter(q=>{
+    if(ft&&q.qtype!==ft)return false;
+    const c=p=>q[p]?.correct;
+    if(fo==="agentWins"&&!(c("agentic")&&!c("rag")))return false;
+    if(fo==="agentLoses"&&!(!c("agentic")&&c("rag")))return false;
+    if(fo==="allWrong"&&(c("rag")||c("graphrag")||c("agentic")))return false;
+    if(tx&&!(q.question+" "+P.map(p=>q[p]?.answer).join(" ")).toLowerCase().includes(tx))return false;
+    return true;});
+  qs.innerHTML=`<tr><th>Question</th><th>Type</th>${P.map(p=>`<th>${L[p]}</th>`).join("")}</tr>`+list.map(q=>{
+    const cell=p=>{const r=q[p];if(!r)return "<td>-</td>";
+      const tr=(r.trace||[]).map(s=>`#${s.step} ${s.agent}.${s.tool}(${esc(JSON.stringify(s.args))}) -> ${esc(JSON.stringify(s.result_summary))} [${s.seconds??""}s]`).join("\n");
+      const meta=(p==="agentic"||p==="adaptive")&&r.steps?`steps ${r.steps}, tools ${(r.tools_used||[]).join(", ")}, strategy changes ${r.strategy_changes}, stop: ${r.stop_reason}`:"";
+      return `<td><span class="${r.correct?"ok":"bad"}">${r.correct?"✓":"✗"}</span> ${esc(r.answer)}<div class="mute">${num(r.total_tokens)} tok · ${r.seconds}s</div>
+      ${tr?`<details><summary>trace</summary><div class="trace">${meta?esc(meta)+"\n":""}${tr}\ncited: ${esc((r.citations||[]).slice(0,12).join(", "))}</div></details>`:""}</td>`};
+    return `<tr><td>${esc(q.question)}<div class="mute">${q.qid}</div></td><td><span class="pill">${q.qtype}</span></td>${P.map(cell).join("")}</tr>`}).join("");
+}
+[fType,fOutcome,fText].forEach(e=>e.addEventListener("input",render));render();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+﻿CREATE VERTEX Doc(PRIMARY_ID doc_id STRING, title STRING, doctype STRING) WITH primary_id_as_attribute="true"
+CREATE VERTEX Chunk(PRIMARY_ID chunk_id STRING, doc_id STRING, idx INT, text STRING) WITH primary_id_as_attribute="true"
+CREATE VERTEX Event(PRIMARY_ID doc_id STRING, title STRING, sport STRING, event STRING, games STRING, year INT, season STRING, venue STRING, date_str STRING, competitors INT, nations INT) WITH primary_id_as_attribute="true"
+CREATE VERTEX Games(PRIMARY_ID name STRING, year INT, season STRING) WITH primary_id_as_attribute="true"
+CREATE VERTEX Sport(PRIMARY_ID name STRING) WITH primary_id_as_attribute="true"
+CREATE VERTEX Venue(PRIMARY_ID name STRING) WITH primary_id_as_attribute="true"
+CREATE VERTEX Athlete(PRIMARY_ID name STRING) WITH primary_id_as_attribute="true"
+CREATE VERTEX Nation(PRIMARY_ID noc STRING) WITH primary_id_as_attribute="true"
+CREATE DIRECTED EDGE HAS_CHUNK(FROM Doc, TO Chunk)
+CREATE DIRECTED EDGE IS_EVENT(FROM Doc, TO Event)
+CREATE DIRECTED EDGE IN_GAMES(FROM Event, TO Games)
+CREATE DIRECTED EDGE IN_SPORT(FROM Event, TO Sport)
+CREATE DIRECTED EDGE HELD_AT(FROM Event, TO Venue)
+CREATE DIRECTED EDGE MEDAL(FROM Event, TO Athlete, medal STRING, noc STRING)
+CREATE DIRECTED EDGE MEDAL_NATION(FROM Event, TO Nation, medal STRING)
+CREATE DIRECTED EDGE PREV_GAMES(FROM Games, TO Games)
+CREATE DIRECTED EDGE PREV_EDITION(FROM Event, TO Event)
+CREATE GRAPH AgenticOlympics(Doc, Chunk, Event, Games, Sport, Venue, Athlete, Nation, HAS_CHUNK, IS_EVENT, IN_GAMES, IN_SPORT, HELD_AT, MEDAL, MEDAL_NATION, PREV_GAMES, PREV_EDITION)
